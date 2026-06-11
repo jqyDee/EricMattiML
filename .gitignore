@@ -1,1 +1,3 @@
 /dataset/transactions.csv
+/data
+**/__pycache__
