@@ -2,6 +2,7 @@ import argparse
 
 import logistic_regression.evaluate as lr_eval
 import logistic_regression.train as lr_train
+import logistic_regression.visualize as lr_viz
 import neural_network.evaluate as nn_eval
 import neural_network.train as nn_train
 
@@ -18,9 +19,21 @@ def main():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["train", "eval"],
+        choices=["train", "eval", "visualize"],
         default="train",
-        help="Specify the execution mode: 'train' to train a new model, or 'eval' to test an existing one.",
+        help="Specify the execution mode: 'train', 'eval', or 'visualize'.",
+    )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        default=False,
+        help="Use GridSearchCV hyperparameter tuning (slower). Default: simple fixed-param training.",
+    )
+    parser.add_argument(
+        "--scoring",
+        type=str,
+        default="average_precision",
+        help="Scoring metric for GridSearchCV. Defaults to average_precision.",
     )
     args = parser.parse_args()
 
@@ -30,15 +43,19 @@ def main():
 
     if args.mode == "train":
         if args.algo == "lr":
-            lr_train.train()
+            lr_train.run(tuned=args.tune, create_cv_results=True, scoring=args.scoring)
         elif args.algo == "nn":
-            nn_train.train()
+            nn_train.run()
 
     elif args.mode == "eval":
         if args.algo == "lr":
-            lr_eval.evaluate()
+            lr_eval.evaluate(tuned=args.tune)
         elif args.algo == "nn":
             nn_eval.evaluate()
+
+    elif args.mode == "visualize":
+        if args.algo == "lr":
+            lr_viz.visualize()
 
 
 if __name__ == "__main__":
