@@ -1,4 +1,5 @@
 /dataset/transactions.csv
-/data
+/algorithms/data
 **/__pycache__
+
 **/.DS_Store

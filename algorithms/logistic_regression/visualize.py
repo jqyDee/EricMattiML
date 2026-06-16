@@ -23,6 +23,7 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
     precision_recall_curve,
+    roc_auc_score,
 )
 from sklearn.model_selection import train_test_split
 
@@ -59,7 +60,10 @@ def plot_pr_curves():
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    for label, tuned in [("Simple (L2, class_weight=balanced)", False), ("Tuned (L1, C=0.1)", True)]:
+    for label, tuned in [
+        ("Simple (L2, class_weight=balanced)", False),
+        ("Tuned (L1, C=0.1)", True),
+    ]:
         path = LR_TUNED_MODEL_SAVE_PATH if tuned else LR_MODEL_SAVE_PATH
         if not os.path.exists(path):
             print(f"Skipping {label}: artifacts not found.")
@@ -71,15 +75,23 @@ def plot_pr_curves():
 
         precision, recall, thresholds = precision_recall_curve(y_val, proba)
         auprc = average_precision_score(y_val, proba)
+        roc_auc = roc_auc_score(y_val, proba)
 
         (line,) = ax.plot(
-            recall, precision, label=f"{label}  (AUPRC={auprc:.4f})", lw=2
+            recall,
+            precision,
+            label=f"{label}  (AUPRC={auprc:.4f}, ROC-AUC={roc_auc:.4f})",
+            lw=1.5,
         )
 
         op_idx = np.argmin(np.abs(thresholds - threshold))
         ax.scatter(
-            recall[op_idx], precision[op_idx], color=line.get_color(), s=80, zorder=5,
-            label=f"_op_{label}"
+            recall[op_idx],
+            precision[op_idx],
+            color=line.get_color(),
+            s=80,
+            zorder=5,
+            label=f"_op_{label}",
         )
 
     ax.set_xlabel("Recall")
@@ -116,9 +128,7 @@ def plot_confusion_matrices():
         print("No artifacts found.")
         return
 
-    fig, axes = plt.subplots(
-        1, len(models_to_plot), figsize=(5 * len(models_to_plot), 4)
-    )
+    fig, axes = plt.subplots(1, len(models_to_plot), figsize=(10, 5))
     if len(models_to_plot) == 1:
         axes = [axes]
 
@@ -152,9 +162,11 @@ def plot_gridsearch_results():
     with open(LR_TUNED_CV_RESULTS_PATH, "rb") as f:
         cv_data = pickle.load(f)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-    for ax, (key, title) in zip(axes, [("l2", "L2 regularization (lbfgs)"), ("l1", "L1 regularization (saga)")]):
+    for ax, (key, title) in zip(
+        axes, [("l2", "L2 regularization (lbfgs)"), ("l1", "L1 regularization (saga)")]
+    ):
         results = cv_data[key]
         params = results["params"]
         scores = results["mean_test_score"]
@@ -170,12 +182,21 @@ def plot_gridsearch_results():
             means = []
             errs = []
             for C in C_vals:
-                idx = next(j for j, p in enumerate(params) if p["C"] == C and str(p["class_weight"]) == cw)
+                idx = next(
+                    j
+                    for j, p in enumerate(params)
+                    if p["C"] == C and str(p["class_weight"]) == cw
+                )
                 means.append(scores[idx])
                 errs.append(stds[idx])
             ax.bar(
-                x + i * width, means, width, yerr=errs,
-                label=f"class_weight={cw}", color=colors[i % len(colors)], capsize=4
+                x + i * width,
+                means,
+                width,
+                yerr=errs,
+                label=f"class_weight={cw}",
+                color=colors[i % len(colors)],
+                capsize=4,
             )
 
         ax.set_xticks(x + width / 2)
@@ -198,7 +219,7 @@ def plot_threshold_analysis():
     """F1 / Precision / Recall vs threshold for both models."""
     X_val_raw, y_val = _load_val_set()
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
     for ax, (label, tuned) in zip(axes, [("Simple", False), ("Tuned", True)]):
         path = LR_TUNED_MODEL_SAVE_PATH if tuned else LR_MODEL_SAVE_PATH
@@ -217,9 +238,9 @@ def plot_threshold_analysis():
             2 * precisions[:-1] * recalls[:-1] / (precisions[:-1] + recalls[:-1]),
         )
 
-        ax.plot(thresholds, precisions[:-1], label="Precision", lw=1.5)
-        ax.plot(thresholds, recalls[:-1], label="Recall", lw=1.5)
-        ax.plot(thresholds, f1s, label="F1", lw=2, color="black")
+        ax.plot(thresholds, precisions[:-1], label="Precision", lw=1)
+        ax.plot(thresholds, recalls[:-1], label="Recall", lw=1)
+        ax.plot(thresholds, f1s, label="F1", lw=1.5, color="black")
         ax.axvline(
             threshold, color="red", linestyle="--", label=f"Chosen ({threshold:.4f})"
         )

@@ -7,28 +7,25 @@ import pandas as pd
 try:
     from config import (
         DATASET_PATH,
-        LR_MODEL_SAVE_PATH,
-        LR_RANDOM_STATE,
-        LR_SCALER_SAVE_PATH,
-        LR_SPLIT_RATIO,
-        LR_THRESHOLD_SAVE_PATH,
-        LR_TUNED_CV_RESULTS_PATH,
-        LR_TUNED_MODEL_SAVE_PATH,
-        LR_TUNED_SCALER_SAVE_PATH,
-        LR_TUNED_THRESHOLD_SAVE_PATH,
+        RF_MODEL_SAVE_PATH,
+        RF_RANDOM_STATE,
+        RF_SPLIT_RATIO,
+        RF_THRESHOLD_SAVE_PATH,
+        RF_TUNED_CV_RESULTS_PATH,
+        RF_TUNED_MODEL_SAVE_PATH,
+        RF_TUNED_THRESHOLD_SAVE_PATH,
     )
 except ModuleNotFoundError:
     DATASET_PATH = None
-    LR_SPLIT_RATIO = 0.2
-    LR_RANDOM_STATE = 42
-    LR_MODEL_SAVE_PATH = None
-    LR_SCALER_SAVE_PATH = None
-    LR_THRESHOLD_SAVE_PATH = None
-    LR_TUNED_MODEL_SAVE_PATH = None
-    LR_TUNED_SCALER_SAVE_PATH = None
-    LR_TUNED_THRESHOLD_SAVE_PATH = None
-    LR_TUNED_CV_RESULTS_PATH = None
-from sklearn.linear_model import LogisticRegression
+    RF_SPLIT_RATIO = 0.2
+    RF_RANDOM_STATE = 42
+    RF_MODEL_SAVE_PATH = None
+    RF_THRESHOLD_SAVE_PATH = None
+    RF_TUNED_MODEL_SAVE_PATH = None
+    RF_TUNED_THRESHOLD_SAVE_PATH = None
+    RF_TUNED_CV_RESULTS_PATH = None
+
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     average_precision_score,
     classification_report,
@@ -36,8 +33,7 @@ from sklearn.metrics import (
     precision_recall_curve,
     roc_auc_score,
 )
-from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.preprocessing import RobustScaler
+from sklearn.model_selection import RandomizedSearchCV, train_test_split
 
 
 def process_dataset(dataset_path=None):
@@ -50,13 +46,12 @@ def process_dataset(dataset_path=None):
     Returns:
         tuple: The training and validation sets (X_train, X_val, y_train, y_val).
     """
-
     path = Path(dataset_path) if dataset_path else DATASET_PATH
     assert isinstance(path, Path)
     print(f"Loading dataset from {path}...")
     df = pd.read_csv(path)
 
-    # Drop the Class column for training/testing data respectively
+    # Drop the Class and Time column for training/testing data respectively
     X = df.drop(
         ["Class", "Time"], axis=1
     )  # dropping the Time column, seems to yield no change, meaning Time
@@ -65,35 +60,8 @@ def process_dataset(dataset_path=None):
 
     print("Splitting data into Train and Validation sets...")
     return train_test_split(
-        X, y, test_size=LR_SPLIT_RATIO, random_state=LR_RANDOM_STATE, stratify=y
+        X, y, test_size=RF_SPLIT_RATIO, random_state=RF_RANDOM_STATE, stratify=y
     )
-
-
-def scale_data(X_train, X_val):
-    """
-    Scale the Time and Amount features using RobustScaler.
-
-    Args:
-        X_train: training features
-        X_val: validation features
-
-    Returns:
-        X_train: scaled training features
-        X_val: scaled validation features
-        scaler: the fitted RobustScaler instance
-    """
-
-    print("Scaling Time and Amount features...")
-    scaler = RobustScaler()
-
-    # cols_to_scale = ["Time", "Amount"]
-    cols_to_scale = ["Amount"]  # tried dropping the Time column
-
-    # Fit ONLY on train to prevent data leakage
-    X_train[cols_to_scale] = scaler.fit_transform(X_train[cols_to_scale])
-    X_val[cols_to_scale] = scaler.transform(X_val[cols_to_scale])
-
-    return X_train, X_val, scaler
 
 
 def find_best_threshold(y_val, y_pred_proba):
@@ -169,35 +137,35 @@ def validate(model, X_val, y_val):
 
 def _artifact_paths(tuned, output_dir=None):
     """
-    Returns the paths for saving model artifacts based on the tuning status and output directory.
+    Returns the paths for saving model artifacts based on the tuning status and
+    output directory.
 
     Args:
         tuned: Whether the model is tuned or not.
-        output_dir: The directory to save the artifacts. If None, uses the default paths.
+        output_dir: The directory to save the artifacts. If None, uses the
+                    default paths.
 
     Returns:
         tuple: The paths for the model, scaler, threshold, and CV results.
     """
 
-    prefix = "lr_tuned" if tuned else "lr_simple"
+    prefix = "rf_tuned" if tuned else "rf_simple"
     if output_dir:
         base = Path(output_dir)
         base.mkdir(parents=True, exist_ok=True)
         return (
             base / f"{prefix}_model.pkl",
-            base / f"{prefix}_scaler.pkl",
             base / f"{prefix}_threshold.pkl",
             base / f"{prefix}_cv_results.pkl",
         )
     return (
-        LR_TUNED_MODEL_SAVE_PATH if tuned else LR_MODEL_SAVE_PATH,
-        LR_TUNED_SCALER_SAVE_PATH if tuned else LR_SCALER_SAVE_PATH,
-        LR_TUNED_THRESHOLD_SAVE_PATH if tuned else LR_THRESHOLD_SAVE_PATH,
-        LR_TUNED_CV_RESULTS_PATH,
+        RF_TUNED_MODEL_SAVE_PATH if tuned else RF_MODEL_SAVE_PATH,
+        RF_TUNED_THRESHOLD_SAVE_PATH if tuned else RF_THRESHOLD_SAVE_PATH,
+        RF_TUNED_CV_RESULTS_PATH,
     )
 
 
-def save(model, scaler, threshold, tuned, output_dir=None):
+def save(model, threshold, tuned, output_dir=None):
     """
     Save the trained model, scaler, and threshold to disk.
 
@@ -209,17 +177,14 @@ def save(model, scaler, threshold, tuned, output_dir=None):
         output_dir: The directory to save the artifacts to.
     """
 
-    model_path, scaler_path, threshold_path, _ = _artifact_paths(tuned, output_dir)
+    model_path, threshold_path, _ = _artifact_paths(tuned, output_dir)
     assert isinstance(model_path, Path)
-    assert isinstance(scaler_path, Path)
     assert isinstance(threshold_path, Path)
 
     print(f"\nSaving artifacts to {model_path.parent} ...")
 
     with open(model_path, "wb") as f:
         pickle.dump(model, f)
-    with open(scaler_path, "wb") as f:
-        pickle.dump(scaler, f)
     with open(threshold_path, "wb") as f:
         pickle.dump(threshold, f)
 
@@ -228,25 +193,26 @@ def save(model, scaler, threshold, tuned, output_dir=None):
 
 def train_simple(X_train, y_train):
     """
-    Train a simple Logistic Regression model with default parameters for quick
+    Train a simple Random Forest model with default parameters for quick
     training and evaluation.
 
     Args:
-        X_train: The training features.
-        y_train: The training labels.
+        X_train: Training features.
+        y_train: Training labels.
 
     Returns:
-        The trained model.
+        model: The trained Random Forest model.
     """
 
-    print("Training Logistic Regression (Simple) ...")
-    model = LogisticRegression(
-        class_weight="balanced",
-        max_iter=1000,
-        random_state=LR_RANDOM_STATE,
-        verbose=2,
+    print("Training Random Forest (Simple) ...")
+    model = RandomForestClassifier(
+        random_state=RF_RANDOM_STATE,
+        n_jobs=-1,
+        verbose=1,
     )
+
     model.fit(X_train, y_train)
+
     return model
 
 
@@ -258,7 +224,7 @@ def train_tuned(
     create_cv_results=False,
 ):
     """
-    Train a tuned Logistic Regression model using GridSearchCV.
+    Train a tuned Random Forest model using GridSearchCV.
 
     Args:
         X_train: The training features.
@@ -270,85 +236,91 @@ def train_tuned(
         The trained model.
     """
 
-    print("Training Logistic Regression with GridSearchCV...")
-    param_grid = {
-        "C": [0.1, 1, 10],
-        "class_weight": [None, "balanced"],
-    }
+    print("Training Random Forest with GridSearchCV...")
 
-    # Check which solver is creates the best scoring result. LBFGS is the
-    # default for Logistic Regression in scikit-learn. Saga is slower but only
-    # solver supports L1 regularization.
+    # GridSearchCV with parameters gathered from tuning with RandomizedSearchCV
+    # to keep computation time manageable
+    #
+    # Change to False and modify param_grid of else branch to tune further with
+    # RandomizedSearchCV
+    fixed_params_enabled = True
 
-    # lbfgs for L2, as this converges much faster than saga on large datasets
-    grid_l2 = GridSearchCV(
-        LogisticRegression(
-            max_iter=1000,
-            random_state=LR_RANDOM_STATE,
-            solver="lbfgs",
-        ),
-        param_grid,
-        scoring=scoring,
-        cv=3,
-        n_jobs=-1,
-        verbose=2,
-    )
-    # saga required for L1
-    # lowering tol to 1e-3 from default 1e-4 reduces iterations by 10x. This is
-    # necessary to keep the computation time reasonable.
-    grid_l1 = GridSearchCV(
-        LogisticRegression(
-            max_iter=5000,
-            random_state=LR_RANDOM_STATE,
-            solver="saga",
-            l1_ratio=1,
-            tol=1e-3,
-        ),
-        param_grid,
-        scoring=scoring,
-        cv=3,
-        n_jobs=-1,
-        verbose=2,
-    )
+    if fixed_params_enabled:
+        print("Using fixed params for Random Forest; cv_results not updated!")
 
-    print("--- Grid search: L2 (lbfgs) ---")
-    grid_l2.fit(X_train, y_train)
-    print(
-        f"L2 best: C={grid_l2.best_params_['C']}  |  CV score: {grid_l2.best_score_:.4f} | Class weight: {grid_l2.best_params_['class_weight']}"
-    )
+        # here we used grid search before, but noticed computation time was too
+        # long -> switched to fixed params and RandomForestClassifier.fit() for
+        # finding the best hyperparameters
+        model = RandomForestClassifier(
+            n_estimators=500,  # number of trees
+            min_samples_split=2,  # minimum number of samples required to split a node
+            min_samples_leaf=1,  # minimum number of samples required at a leaf node
+            max_features="log2",  # number of features to consider when looking for the best split
+            max_depth=None,  # maximum depth of the tree
+            class_weight="balanced",  # class weight to handle class imbalance
+            random_state=RF_RANDOM_STATE,  # random state for reproducibility
+            n_jobs=-1,  # use all available CPU cores
+            verbose=1,  # verbose output during training
+        )
 
-    print("--- Grid search: L1 (saga) ---")
-    grid_l1.fit(X_train, y_train)
-    print(
-        f"L1 best: C={grid_l1.best_params_['C']}  |  CV score: {grid_l1.best_score_:.4f} | Class weight: {grid_l1.best_params_['class_weight']}"
-    )
+        model.fit(X_train, y_train)
 
-    best = grid_l2 if grid_l2.best_score_ >= grid_l1.best_score_ else grid_l1
-    print(
-        f"Selected: {'L2' if best is grid_l2 else 'L1'}  |  CV score: {best.best_score_:.4f}"
-    )
-    print(f"Best params: {best.best_params_}")
+        return model
+    else:
+        param_grid = {
+            "n_estimators": [300, 500],  # removed 50 and 100 trees for now
+            "min_samples_split": [2],
+            "min_samples_leaf": [1],
+            "max_features": ["log2"],
+            "max_depth": [None],
+            "class_weight": ["balanced"],
+            # --- Previously tuned ---
+            # "n_estimators": [50, 100, 150, 200],  # removed 50 and 100 trees for now, added 300
+            # "min_samples_split": [2, 5, 10],  # Previous tuning revealed min_samples_split=2 is best
+            # "min_samples_leaf": [1, 2],  # Previous tuning revealed min_samples_leaf=1 is best
+            # "max_depth": [5, 10, 15, 20, None],  # Previous tuning revealed max_depth of None is best
+            # "class_weight": ["balanced", None],  # Previous tuning revealed "balanced" is best
+            # "max_samples": [None, 0.7, 0.8],  # Previous tuning revealed None is best
+        }
 
-    # This is only for internal visualization and not necessary for the model itself
+        # Use RandomizedSearchCV to test 50 random combinations of hyperparameters
+        # This is done to keep computation time reasonable, while still
+        # exploring a wide range of hyperparameters, by drawing 50 random
+        # samples from the parameter space.
+        grid = RandomizedSearchCV(
+            RandomForestClassifier(random_state=42, n_jobs=-1),
+            param_grid,
+            n_iter=50,  # Test 50 random combinations
+            scoring=scoring,
+            cv=3,
+            n_jobs=-1,
+            random_state=42,
+            verbose=2,
+        )
+
+    grid.fit(X_train, y_train)
+
+    print(f"Best params: {grid.best_params_}")
+    print(f"CV score: {grid.best_score_:.4f}")
+
     if create_cv_results:
-        _, _, _, cv_results_path = _artifact_paths(tuned=True, output_dir=output_dir)
+        _, _, cv_results_path = _artifact_paths(tuned=True, output_dir=output_dir)
         assert isinstance(cv_results_path, Path)
-
         with open(cv_results_path, "wb") as f:
-            pickle.dump({"l2": grid_l2.cv_results_, "l1": grid_l1.cv_results_}, f)
+            pickle.dump(grid.cv_results_, f)
 
-    return best.best_estimator_
+    return grid.best_estimator_
 
 
 def run(
-    scoring,
     create_cv_results,
-    tuned=False,
+    scoring,
+    tuned,
     dataset_path=None,
     output_dir=None,
 ):
     """
-    Run logistic regression training.
+    Run Random Forest training.
 
     Args:
         tuned (bool): whether to use tuned hyperparameters
@@ -359,13 +331,12 @@ def run(
     """
 
     variant = "tuned" if tuned else "simple"
-    print(f"Running logistic regression training ({variant})...")
+    print(f"Running Random Forest training ({variant})...")
 
     X_train, X_val, y_train, y_val = process_dataset(dataset_path)
     assert isinstance(X_train, pd.DataFrame)
     assert isinstance(X_val, pd.DataFrame)
 
-    X_train, X_val, scaler = scale_data(X_train, X_val)
     model = (
         train_tuned(
             X_train,
@@ -378,25 +349,25 @@ def run(
         else train_simple(X_train, y_train)
     )
     threshold = validate(model, X_val, y_val)
-    save(model, scaler, threshold, tuned, output_dir)
+    save(model, threshold, tuned, output_dir)
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Train Logistic Regression fraud detection model."
+        description="Train Random Forest fraud detection model."
     )
     parser.add_argument(
         "--dataset",
         type=str,
         default=None,
-        help="Path to dataset CSV. Defaults to config path.",
+        help="Path to the dataset. Defaults to config path.",
     )
     parser.add_argument(
         "--no-tune",
         action="store_false",
-        default=True,
+        default=True,  # this is inverted, so default (True) means tuning is enabled
         help="Use GridSearchCV hyperparameter tuning.",
     )
     parser.add_argument(

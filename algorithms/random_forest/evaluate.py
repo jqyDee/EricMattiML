@@ -4,14 +4,12 @@ import joblib
 import pandas as pd
 from config import (
     DATASET_PATH,
-    LR_MODEL_SAVE_PATH,
-    LR_RANDOM_STATE,
-    LR_SCALER_SAVE_PATH,
-    LR_SPLIT_RATIO,
-    LR_THRESHOLD_SAVE_PATH,
-    LR_TUNED_MODEL_SAVE_PATH,
-    LR_TUNED_SCALER_SAVE_PATH,
-    LR_TUNED_THRESHOLD_SAVE_PATH,
+    RF_MODEL_SAVE_PATH,
+    RF_RANDOM_STATE,
+    RF_SPLIT_RATIO,
+    RF_THRESHOLD_SAVE_PATH,
+    RF_TUNED_MODEL_SAVE_PATH,
+    RF_TUNED_THRESHOLD_SAVE_PATH,
 )
 from sklearn.metrics import (
     average_precision_score,
@@ -23,18 +21,16 @@ from sklearn.model_selection import train_test_split
 
 
 def evaluate(tuned=False):
-    model_path = LR_TUNED_MODEL_SAVE_PATH if tuned else LR_MODEL_SAVE_PATH
-    scaler_path = LR_TUNED_SCALER_SAVE_PATH if tuned else LR_SCALER_SAVE_PATH
-    threshold_path = LR_TUNED_THRESHOLD_SAVE_PATH if tuned else LR_THRESHOLD_SAVE_PATH
+    model_path = RF_TUNED_MODEL_SAVE_PATH if tuned else RF_MODEL_SAVE_PATH
+    threshold_path = RF_TUNED_THRESHOLD_SAVE_PATH if tuned else RF_THRESHOLD_SAVE_PATH
 
-    for path in [model_path, scaler_path, threshold_path]:
+    for path in [model_path, threshold_path]:
         if not os.path.exists(path):
             raise FileNotFoundError(f"{path} not found. Run train first.")
 
     variant = "tuned" if tuned else "simple"
-    print(f"Loading {variant} model, scaler, and threshold...")
+    print(f"Loading {variant} model and threshold...")
     model = joblib.load(model_path)
-    scaler = joblib.load(scaler_path)
     threshold = joblib.load(threshold_path)
     print(f"Using decision threshold: {threshold:.4f}")
 
@@ -45,18 +41,15 @@ def evaluate(tuned=False):
     y = df["Class"]
 
     _, X_val, _, y_val = train_test_split(
-        X, y, test_size=LR_SPLIT_RATIO, random_state=LR_RANDOM_STATE, stratify=y
+        X, y, test_size=RF_SPLIT_RATIO, random_state=RF_RANDOM_STATE, stratify=y
     )
-    assert isinstance(X_val, pd.DataFrame)
-
-    X_val[["Amount"]] = scaler.transform(X_val[["Amount"]])
 
     print("Generating predictions...")
     y_pred_proba = model.predict_proba(X_val)[:, 1]
     y_pred = (y_pred_proba >= threshold).astype(int)
 
     print("\n==========================================")
-    print(f"VAL SET RESULTS LOGISTIC REGRESSION ({variant.upper()})")
+    print(f"VAL SET RESULTS RANDOM FOREST ({variant.upper()})")
     print("==========================================\n")
 
     print("--- Confusion Matrix ---")
