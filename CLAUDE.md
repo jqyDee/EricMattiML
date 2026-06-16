@@ -56,36 +56,52 @@ All commands run **from inside `algorithms/`** — imports are flat (`from confi
 `import logistic_regression.train`) and only resolve when `algorithms/` is the working dir.
 
 ```bash
-source .venv/bin/activate          # repo-root venv, Python 3.13
+source .venv/bin/activate              # repo-root venv, Python 3.13
 cd algorithms
-python main.py --algo lr --mode train   # train logistic regression -> data/*.pkl
-python main.py --algo lr --mode eval     # load artifacts, evaluate
-python main.py --algo nn --mode train   # neural network (currently a stub)
+python main.py --algo lr --mode train  # train LR with GridSearchCV -> models/*.pkl
+python main.py --algo lr --mode eval   # evaluate LR on val set
+python main.py --algo lr --mode viz    # generate LR plots -> plots/lr/
+python main.py --algo rf --mode train  # train RF with fixed best params -> models/*.pkl
+python main.py --algo rf --mode eval   # evaluate RF on val set
+python main.py --algo rf --mode viz    # generate RF plots -> plots/rf/
+python main.py --mode compare          # cross-model comparison plots -> plots/compare/
+python main.py --algo both --mode train --no-tune  # train both, simple (fast)
 ```
 
-`--algo` ∈ {`lr`, `nn`}, `--mode` ∈ {`train`, `eval`}. Defaults: `lr` / `train`.
-No test suite or linter is configured.
+`--algo` ∈ {`lr`, `rf`, `both`}, `--mode` ∈ {`train`, `eval`, `viz`, `compare`, `no-train`, `all`}.
+Defaults: `rf` / `train`. No test suite or linter is configured.
 
 ## Architecture
 
-`main.py` is a thin argparse dispatcher → calls `<algo>.train.train()` or `<algo>.evaluate.evaluate()`.
-Each algorithm is a package under `algorithms/` exposing exactly that `train()` / `evaluate()` pair.
-To add an algorithm: create the package, implement the two functions, add a `--algo` choice + branch
-in `main.py`.
+`main.py` is a thin argparse dispatcher → calls `<algo>.train.run()`, `<algo>.evaluate.evaluate()`, or
+`<algo>.visualize.visualize()`. Each algorithm package exposes exactly those three functions.
 
-`config.py` centralizes all paths (dataset in, model + scaler `.pkl` out) relative to repo root and
-creates `data/`. Add new paths there rather than hardcoding.
+`config.py` centralizes all paths (dataset in, model `.pkl` out, plot dirs) relative to repo root and
+creates `models/` and `plots/` on import. Add new paths there rather than hardcoding.
 
-### Pipeline conventions (from `logistic_regression/`)
-- Only `Time` and `Amount` are scaled (`RobustScaler`); `Feature0..27` are pre-PCA'd, left as-is.
-- Scaler is `fit` on train only, then `transform` on val/test — never `fit` on test (data leakage).
+### Pipeline conventions — LR (`logistic_regression/`)
+- `Time` is **dropped** (no predictive signal, negligible AUPRC delta confirmed). `Amount` scaled with
+  `RobustScaler` fit on train only — scaler saved as artifact for inference.
+- `Feature0`–`Feature27` are pre-PCA'd, left as-is.
 - Imbalance handled via `class_weight="balanced"` (not resampling).
-- `train_test_split(..., stratify=y, random_state=42)` to preserve fraud rate across the split.
-- Primary metric is **AUPRC** (`average_precision_score`) plus the classification report — accuracy is
-  meaningless here. Optimize recall/F1 for the fraud class.
-- Artifacts written with `pickle` (train) but read with `joblib` (eval) — both load sklearn pickles fine.
+- `train_test_split(..., stratify=y, random_state=42)` — same split reproduced in eval + visualize.
+- Hyperparameter search: `GridSearchCV` over `C ∈ {0.1, 1, 10}` × `penalty ∈ {l1, l2}` ×
+  `class_weight ∈ {balanced, None}`, scored on `average_precision`.
+- Primary metric: **AUPRC** (`average_precision_score`). Secondary: ROC-AUC (grader leaderboard).
+- Artifacts written with `pickle` (train), read with `joblib` (eval) — both load sklearn pickles fine.
 
-## Status / gotchas
-- `neural_network/train.py` and `evaluate.py` are stubs (`pass`) — not yet implemented.
-- `evaluate()` currently points at the same `DATASET_PATH` as training; the real graders supply a
-  separate hidden test file. There are `TODO`s in `lr/train.py` about JupyterHub's own validation.
+### Pipeline conventions — RF (`random_forest/`)
+- `Time` dropped. No feature scaling needed (tree splits on rank, not magnitude). No scaler artifact.
+- Same 80/20 stratified split (`random_state=42`). `class_weight="balanced"` critical for recall.
+- Best params settled after 5 tuning runs: `n_estimators=500`, `max_depth=None`, `max_features="log2"`,
+  `class_weight="balanced"`, `min_samples_split=2`, `min_samples_leaf=1`.
+- `fixed_params_enabled=True` in `train_tuned()` skips GridSearchCV and instantiates directly with
+  best known params (fast, deterministic). Set `False` to run RandomizedSearchCV exploration.
+- F1-maximizing threshold found via PR curve sweep (stored in `rf_*_threshold.pkl`).
+
+## Status
+- **LR**: fully implemented — simple + tuned, evaluate, visualize (4 plots), GridSearch CV results.
+- **RF**: fully implemented — simple + tuned, evaluate, visualize (4 plots including feature importance).
+- **Compare**: `compare.py` generates 4 cross-model plots (PR curves, ROC curves, metrics bar, confusion matrices).
+- **Neural network** stubs at `neural_network/` are unused — RF is the second algorithm.
+- `evaluate()` reproduces the same 80/20 val split locally; graders supply a separate hidden test file.
