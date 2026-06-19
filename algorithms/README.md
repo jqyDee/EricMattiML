@@ -23,9 +23,14 @@ Create a `./dataset/` folder and place the dataset file there:
 `config.py` reads the `.zip` directly via pandas.
 
 ## Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
+
+> Important Note: Python 3.9.12 required to run created models on jupyter hub.
+  Also the correct dependencies have to be installed. The working dependencies
+  are listed in `requirements.txt`.
 
 ---
 

@@ -125,7 +125,7 @@ def find_best_threshold(y_val, y_pred_proba):
     best_threshold = thresholds[best_idx]
 
     print(
-        f"\n--- Best threshold: {best_threshold:.4f} (F1={f1_scores[best_idx]:.4f}) ---"
+        f"\n--- Best threshold: {best_threshold:.20f} (F1={f1_scores[best_idx]:.4f}) ---"
     )
 
     return best_threshold
@@ -301,7 +301,7 @@ def train_tuned(
             max_iter=5000,
             random_state=LR_RANDOM_STATE,
             solver="saga",
-            l1_ratio=1,
+            penalty="l1",
             tol=1e-3,
         ),
         param_grid,

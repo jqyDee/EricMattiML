@@ -47,6 +47,10 @@ def evaluate(tuned=False):
     _, X_val, _, y_val = train_test_split(
         X, y, test_size=LR_SPLIT_RATIO, random_state=LR_RANDOM_STATE, stratify=y
     )
+
+    X_val = X
+    y_val = y
+    
     assert isinstance(X_val, pd.DataFrame)
 
     X_val[["Amount"]] = scaler.transform(X_val[["Amount"]])
@@ -55,9 +59,9 @@ def evaluate(tuned=False):
     y_pred_proba = model.predict_proba(X_val)[:, 1]
     y_pred = (y_pred_proba >= threshold).astype(int)
 
-    print("\n==========================================")
+    print("\n\n" + "=" * 100)
     print(f"VAL SET RESULTS LOGISTIC REGRESSION ({variant.upper()})")
-    print("==========================================\n")
+    print("=" * 100 + "\n\n")
 
     print("--- Confusion Matrix ---")
     print(confusion_matrix(y_val, y_pred))

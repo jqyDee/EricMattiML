@@ -1,0 +1,236 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%2345678901234567890123456789012345678901234567890123456789012345678901234567890
+%        1         2         3         4         5         6         7         8
+
+\documentclass[a4, 10 pt, conference]{ieeeconf}
+
+\IEEEoverridecommandlockouts
+\overrideIEEEmargins
+
+\usepackage{multicol}
+\usepackage{tcolorbox}
+\usepackage{cuted,tcolorbox,lipsum}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath}
+
+\title{\LARGE \bf
+Introduction to Machine Learning (SS 2026)\\ Programming Project
+\vspace{-3em}
+}
+
+\begin{document}
+
+\maketitle
+\vspace{-3em}
+\thispagestyle{empty}
+\pagestyle{empty}
+
+\begin{strip}
+\begin{tcolorbox}[
+size=tight,
+colback=white,
+boxrule=0.2mm,
+left=3mm,right=3mm, top=3mm, bottom=1mm
+]
+{\begin{multicols}{2}
+
+\textbf{Author 1}           \\
+Last name: Fischbach        \\
+First name: Matti Sebastian \\
+Matrikel Nr.: 12404020
+
+\columnbreak
+
+\textbf{Author 2} \\
+Last name: Musch  \\
+First name: Eric  \\
+Matrikel Nr.: 12320608
+
+\end{multicols}}
+\end{tcolorbox}
+\end{strip}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Introduction}
+\label{sec:intro}
+
+We address a binary classification problem: detecting fraudulent financial
+transactions. The dataset contains 227{,}845 transactions described by 31
+features — \texttt{Time}, \texttt{Amount}, and 28 anonymized principal
+components (\texttt{Feature0}–\texttt{Feature27}) produced by a prior PCA
+transformation. The target variable \texttt{Class} encodes legitimate (0) or
+fraudulent (1) transactions.
+
+The dataset is severely imbalanced: only 394 of 227{,}845 transactions are
+fraud (0.17\%). This makes accuracy a misleading metric, since a trivial
+all-negative classifier achieves 99.83\% accuracy while catching zero fraud.
+We therefore report Area Under the Precision–Recall Curve (AUPRC) as our
+primary metric, which directly captures the precision–recall trade-off on the
+minority class and is not inflated by the large number of true negatives.
+ROC-AUC is used as a secondary metric for leaderboard/test-dataset evaluation.
+
+\section{Implementation / ML Process}
+\label{sec:methods}
+
+\subsection{Preprocessing}
+
+We applied an 80/20 stratified train–validation split (\texttt{random\_state=42})
+to preserve the 0.17\% fraud rate in both sets.
+The \texttt{Time} feature was dropped after empirical analysis showed it provides
+negligible predictive signal (AUPRC delta $<$0.001).
+\texttt{Amount} was scaled with \texttt{RobustScaler} fitted on the training set
+only to prevent data leakage; this is required for Logistic Regression but omitted
+for Random Forest as tree models are invariant to monotone feature transformations.
+Class imbalance was handled via \texttt{class\_weight=`balanced'} on both models,
+which reweights the loss function inversely proportional to class frequency,
+avoiding the need for resampling.
+
+\subsection{Method 1: Logistic Regression}
+
+Logistic Regression serves as our interpretable linear baseline. It models
+the log-odds of fraud as a linear combination of features and outputs calibrated
+probabilities, which is well-suited for imbalanced binary classification.
+We ran \texttt{GridSearchCV} (3-fold CV, scored on \texttt{average\_precision})
+over $C \in \{0.1, 1, 10\}$ and both L1 and L2 regularization, with
+\texttt{class\_weight} $\in \{\texttt{balanced},\texttt{None}\}$.
+The best configuration was L1 regularization (\texttt{saga} solver,
+implemented via \texttt{elasticnet} with \texttt{l1\_ratio=1}),
+$C=0.1$, \texttt{class\_weight=None}.
+
+\subsection{Method 2: Random Forest}
+
+THIS NEEDS TO BE CHECKED IF REALLY DONE IN THE LECTURE. ALSO FINAL PARAMETERS
+MIGHT GET DROPPED.
+
+Random Forest is an ensemble of decision trees trained on bootstrap samples
+with random feature subsets at each split. Averaging over 500 trees reduces
+variance substantially without overfitting, which is a key advantage over single
+decision trees on this high-dimensional dataset.
+Unlike Logistic Regression, Random Forest can capture non-linear interactions
+between the anonymized PCA features.
+This method was not covered in the lecture; the closest covered method is a
+single decision tree, which Random Forest extends by training many trees on
+independent bootstrap samples and averaging their predictions.
+
+Hyperparameters were selected through five rounds of \texttt{RandomizedSearchCV}
+and \texttt{GridSearchCV} (3-fold CV, \texttt{average\_precision} scoring),
+progressively narrowing the search space. The key findings were:
+\texttt{max\_depth=None} (unlimited depth) consistently outperformed depth-limited
+trees because the 500-tree averaging prevents overfitting;
+\texttt{max\_features='log2'} produced more diverse trees than \texttt{sqrt} at
+high tree counts;
+and \texttt{max\_samples=None} (full bootstrap sample) was confirmed optimal.
+Final parameters: \texttt{n\_estimators=500}, \texttt{max\_depth=None},
+\texttt{max\_features='log2'}, \texttt{class\_weight='balanced'},
+\texttt{min\_samples\_split=2}, \texttt{min\_samples\_leaf=1}.
+
+\subsection{Decision Threshold}
+
+For both models, the default classification threshold of 0.5 is suboptimal under
+heavy class imbalance. We swept the Precision–Recall curve and selected the
+threshold that maximizes F1-score on the validation set. This threshold is saved
+alongside the model artifact.
+
+\section{Results}
+\label{sec:results}
+
+Table~\ref{tab:metrics} summarises validation set performance for all four model
+variants (simple = default hyperparameters; tuned = post-search best params).
+
+\begin{table}[h]
+\centering
+\caption{Validation Set Performance}
+\label{tab:metrics}
+\begin{tabular}{lrrrr}
+\toprule
+Model & AUPRC & ROC-AUC & F1 & Recall \\
+\midrule
+LR Simple    & 0.787 & 0.981 & 0.857 & 0.835 \\
+LR Tuned     & 0.807 & 0.983 & 0.827 & 0.848 \\
+RF Simple    & 0.887 & 0.955 & 0.899 & 0.848 \\
+RF Tuned     & 0.899 & 0.966 & 0.903 & 0.886 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{fig:confusion} shows the confusion matrix of the tuned Random Forest
+at its F1-optimal threshold (0.172). Of 79 fraud cases it catches 70 (recall
+0.886) while raising only 6 false alarms out of 45{,}490 legitimate
+transactions (precision 0.921).
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/compare_confusion_matrices}
+  \caption{Confusion matrix for LR and RF (simple and tuned).}
+  \label{fig:confusion}
+\end{figure}
+
+Figure~\ref{fig:pr} shows Precision–Recall curves for all four models.
+The tuned RF achieves the highest AUPRC and dominates across all recall levels.
+Both simple models are already competitive, with tuning providing a consistent
+improvement of approximately +0.02 (LR) and +0.01 (RF).
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/compare_pr_curves}
+  \caption{Precision–Recall curves for LR and RF (simple and tuned).
+           Dots mark the F1-optimal operating threshold per model.}
+  \label{fig:pr}
+\end{figure}
+
+Figure~\ref{fig:importance} shows the top-20 feature importances for the tuned
+RF model. \texttt{Feature13} is clearly the most important feature, followed
+by three features (\texttt{Feature3}, \texttt{Feature9}, \texttt{Feature4})
+with similar, substantially lower importance.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/rf_feature_importance}
+  \caption{RF feature importances (mean impurity decrease, tuned model).}
+  \label{fig:importance}
+\end{figure}
+
+\section{Discussion}
+\label{sec:discuss}
+
+Random Forest outperforms Logistic Regression substantially in AUPRC (+0.09),
+which we attribute to non-linear interactions among the PCA features that a
+linear model cannot capture. The high ROC-AUC (0.966 val / 0.972 test) confirms
+the model generalises well to unseen data.
+
+\textbf{What was tried and discarded:}
+(1) Including \texttt{Time} as a feature — AUPRC delta was $<$0.001, so it was
+dropped to simplify the pipeline.
+(2) A Neural Network was initially considered as the second method but replaced
+by Random Forest, which requires no architecture design and achieves better
+out-of-the-box performance on tabular data.
+(3) During tuning, accidentally omitting \texttt{class\_weight='balanced'}
+(RS Test 2) produced the fewest false positives (3) but worst recall (68/79
+fraud caught) — confirming that balanced weighting is critical for this task.
+(4) Varying \texttt{max\_samples} (bootstrap fraction) showed no improvement
+over using the full sample.
+
+\textbf{Potential improvements:}
+Gradient boosting methods (XGBoost, LightGBM) may further improve AUPRC.
+Probability calibration could refine threshold selection. Combining LR and RF
+predictions in an ensemble could also be explored.
+
+\section{Conclusion}
+\label{sec:con}
+
+We implemented two fraud detection classifiers — Logistic Regression and
+Random Forest — on a severely imbalanced financial transactions dataset
+(0.17\% fraud). The tuned Random Forest achieves an AUPRC of 0.899 on the
+local validation set and a ROC-AUC of \textbf{0.9716} on the hidden test set,
+demonstrating strong generalisation. The main takeaways are:
+(1) AUPRC is the appropriate metric for heavily imbalanced binary classification;
+(2) \texttt{class\_weight='balanced'} is essential for recall on the minority class;
+(3) Random Forest with unlimited tree depth and 500 estimators significantly
+outperforms a tuned linear baseline, capturing non-linear structure in the
+anonymised PCA features without requiring feature scaling or resampling.
+
+\end{document}

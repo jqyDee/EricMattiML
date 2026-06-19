@@ -288,13 +288,13 @@ def train_tuned(
         # exploring a wide range of hyperparameters, by drawing 50 random
         # samples from the parameter space.
         grid = RandomizedSearchCV(
-            RandomForestClassifier(random_state=42, n_jobs=-1),
+            RandomForestClassifier(random_state=RF_RANDOM_STATE, n_jobs=-1),
             param_grid,
             n_iter=50,  # Test 50 random combinations
             scoring=scoring,
             cv=3,
             n_jobs=-1,
-            random_state=42,
+            random_state=RF_RANDOM_STATE,
             verbose=2,
         )
 
