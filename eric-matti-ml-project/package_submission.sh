@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FOLDER_NAME="algorithms"
+FOLDER_NAME="eric-matti-ml-project"
 OUT="eric_matti_submission_code.zip"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

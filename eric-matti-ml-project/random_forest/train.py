@@ -279,6 +279,7 @@ def train_tuned(
             # "min_samples_split": [2, 5, 10],  # Previous tuning revealed min_samples_split=2 is best
             # "min_samples_leaf": [1, 2],  # Previous tuning revealed min_samples_leaf=1 is best
             # "max_depth": [5, 10, 15, 20, None],  # Previous tuning revealed max_depth of None is best
+            # "max_features": ["log2", "sqrt"],  # Previous tuning revealed "log2" is best
             # "class_weight": ["balanced", None],  # Previous tuning revealed "balanced" is best
             # "max_samples": [None, 0.7, 0.8],  # Previous tuning revealed None is best
         }
